@@ -1,0 +1,27 @@
+category,group,count,area_median,area_p90,threshold,pct_above_threshold
+Contamination dark,always_faulty,8723,203.5,2588.1000000000004,,
+Yeast residue,always_faulty,6314,1062.25,4316.599999999999,,
+Mold,always_faulty,5981,794.0,18088.5,,
+No base visible,always_faulty,3626,407592.0,1010941.5,,
+Crown cap,always_faulty,2123,31614.5,38149.3,,
+Glass shard,always_faulty,2075,484.0,3090.100000000001,,
+Foreign object - manual cleaning,always_faulty,835,36672.5,248344.70000000004,,
+Foreign object - washing machine,always_faulty,491,709.0,6692.5,,
+Break / Crack,always_faulty,368,15302.75,91238.15000000001,,
+Label,always_faulty,246,30971.5,155291.25,,
+Paint residue,always_faulty,221,652.5,44047.0,,
+Liquid,always_faulty,97,197079.0,354319.8000000001,,
+Foil / Semitransparent,always_faulty,42,1948.5,2628.5,,
+Circlip,always_faulty,39,56279.0,73845.5,,
+Straw,always_faulty,35,102628.5,183831.20000000007,,
+Insect,always_faulty,29,458.0,2087.199999999999,,
+Scuffing,conditional,10058,941.5,20902.300000000025,75000.0,0.04583416186120501
+Air bubble,conditional,3427,20.5,64.0,500.0,0.0017508024511234317
+Contamination light,conditional,1956,143.75,2199.0,180.0,0.450920245398773
+Scuffing heavy,conditional,765,707.0,24496.800000000007,1200.0,0.4222222222222222
+Chip,conditional,717,4958.0,19122.6,200.0,0.99721059972106
+Glass imperfection,conditional,180,788.0,3913.7999999999997,100.0,0.9611111111111111
+Foam residue,good,21923,101.5,471.0,,
+Water drop,good,21751,148.0,1021.5,,
+No fault,good,6235,252004.0,377604.0,,
+Embossing,good,872,1255.5,6238.8499999999985,,

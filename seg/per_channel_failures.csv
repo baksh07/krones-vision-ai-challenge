@@ -1,0 +1,8 @@
+channel,threshold_px,n_fired,fired_on_true_defect,fired_on_actual_clean,precision
+air_bubble,500,0,0,0,0.0
+chip,200,196,176,20,0.898
+contamination_light,180,0,0,0,0.0
+glass_imperfection,100,0,0,0,0.0
+scuffing,75000,311,160,151,0.5145
+scuffing_heavy,1200,0,0,0,0.0
+always_faulty,1,3754,3637,117,0.9688

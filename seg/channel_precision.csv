@@ -1,0 +1,4 @@
+channel,n_triggers,n_true_pos,precision
+always_faulty,3292,3206,0.9738760631834751
+scuffing_heavy,482,255,0.529045643153527
+scuffing,283,154,0.5441696113074205

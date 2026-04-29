@@ -1,0 +1,25 @@
+# Ignore the dataset (it's on Kaggle, can re-download)
+../dataset/
+
+# Ignore Python/venv stuff
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Ignore large temporary files
+*.log
+*.tmp
+*.zip
+*.tar.gz
+
+# Ignore model checkpoints (back up separately)
+*.pt
+*.pth
+
+# Ignore submission CSVs from accidentally committing test data
+seg*/submission_probs.csv
+
+# OS junk
+.DS_Store
+Thumbs.db

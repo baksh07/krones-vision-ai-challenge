@@ -1,0 +1,69 @@
+image_id,target,derived_target,n_annotations,all_cat_names,defect_cat_names,max_defect_area
+81537883-3d84-434e-9b58-91b16ace4920_000000000081.png,1,0,4,Scuffing,,0.0
+cc16a42d-ce48-47a6-a0c3-48f56fb7a8e8_000000000369.png,1,0,9,Scuffing;Water drop,,0.0
+3418230a-37cb-4381-907a-2066b2db45df_000000000532.png,1,0,6,Scuffing,,0.0
+25176dfe-c5bd-4337-a421-174eac713253_000000003804.png,1,0,3,Scuffing,,0.0
+abe3b6df-196f-483d-8598-973cd0eac9cf_000000004456.png,1,0,5,Scuffing,,0.0
+87e63b55-f279-4742-97d7-294c7783849b_000000005747.png,1,0,3,Scuffing,,0.0
+74b4aa9f-5aee-4d33-9a12-99fb9a94e12e_000000006203.png,1,0,12,Scuffing;Scuffing heavy,,0.0
+58739b1f-8792-4234-ba02-761fa758f740_000000006759.png,1,0,4,Scuffing,,0.0
+2584d1a3-d44a-42c5-be24-9c9aecb0bf84_000000007220.png,1,0,6,Scuffing,,0.0
+eabb0ff2-dc5b-46dc-8fd0-dc2a0e40e5b8_000000008207.png,1,0,6,Scuffing,,0.0
+40b3519c-d73f-41b6-9d1d-098f07bf79d6_000000008469.png,1,0,3,Scuffing;Scuffing heavy,,0.0
+1ccea3a8-595b-437e-b5dd-973c022f7338_000000008661.png,1,0,16,Contamination light;Scuffing,,0.0
+9d3ee7f2-bec3-4ddd-8615-281e389c4207_000000009087.png,1,0,20,Scuffing,,0.0
+f4f1d0b5-feb2-4ab1-aac1-7f9b60dfe0da_000000009154.png,1,0,3,Scuffing,,0.0
+bd540024-72ee-4f8b-a68a-52ba2bb40c1c_000000010712.png,1,0,4,Scuffing,,0.0
+b6272af9-9faf-47a9-95ec-5289858ac247_000000010731.png,1,0,5,Scuffing;Water drop,,0.0
+e67d17bf-9d72-425a-b6dd-73490ecc8b38_000000011340.png,1,0,8,Contamination light;Foam residue,,0.0
+c1cf1ecf-7886-4dd5-8eba-41bc0cbf60fd_000000011684.png,1,0,6,Scuffing;Water drop,,0.0
+52d48b62-3060-4137-a591-43a9749861d7_000000011920.png,1,0,5,Scuffing;Water drop,,0.0
+3d6e55fa-a56d-4c43-850d-41b905c8fe1a_000000012381.png,1,0,3,Scuffing,,0.0
+0a949e37-425d-421f-94df-50630784cd84_000000012638.png,1,0,13,Scuffing;Scuffing heavy,,0.0
+ae0b2057-364b-4dca-ad91-a26105dc2e65_000000013102.png,1,0,9,Scuffing,,0.0
+d9d7cff8-2482-498a-a629-732531b3de50_000000013269.png,1,0,2,Scuffing,,0.0
+df57d1c6-0f40-4390-a776-5865ce012ab4_000000013485.png,1,0,3,Scuffing,,0.0
+46be67d8-6510-4953-9d11-c5b77ea01bd6_000000013891.png,1,0,9,Scuffing;Water drop,,0.0
+eef17244-9cd4-45c8-84d4-52f6bc35e010_000000013964.png,1,0,4,Air bubble;Scuffing heavy,,0.0
+9b1b0781-984e-4e83-b208-430139d00d68_000000014537.png,1,0,6,Scuffing,,0.0
+0e9b5c6b-f4d0-41a2-96fd-ddaa0a44415e_000000014688.png,1,0,3,Scuffing heavy,,0.0
+5a79bb8f-5b64-4b4d-a22f-f62cf9c550b8_000000015773.png,1,0,4,Scuffing,,0.0
+f52e2d1b-a440-4f8b-a2a4-1196b00de6f3_000000016029.png,1,0,6,Scuffing,,0.0
+d47d3955-a5d2-46c3-9870-59503111b3ec_000000016300.png,1,0,4,Scuffing,,0.0
+6a0c9aae-c86a-433a-ade4-054efc5edd74_000000016526.png,1,0,16,Contamination light;Foam residue;Scuffing;Scuffing heavy,,0.0
+348d641d-3804-4dd9-8f7e-727ae25fdff4_000000016748.png,1,0,2,Contamination light,,0.0
+f1fefd97-fcbb-403b-83e3-720654204ae0_000000017444.png,1,0,5,Foam residue;Scuffing,,0.0
+8e9ce5f6-3c1f-4d2b-989b-3218b470a68b_000000018044.png,1,0,20,Foam residue;Scuffing;Scuffing heavy,,0.0
+62f8625d-2af1-405a-be44-aa26aad60403_000000018286.png,1,0,10,Scuffing;Scuffing heavy,,0.0
+521b5517-146b-4b3d-b6ef-1ebcd752121b_000000018510.png,1,0,10,Scuffing,,0.0
+7be62661-6944-42b7-8141-01655976226d_000000018535.png,1,0,6,Scuffing,,0.0
+2851a94b-dd19-457f-92c8-1289f0743e61_000000019730.png,1,0,6,Scuffing,,0.0
+17e07ca7-c25a-4102-bf19-951ed13c6191_000000019824.png,1,0,6,Scuffing;Scuffing heavy,,0.0
+ebb3d75d-4d61-4471-91bd-f54e65f36335_000000019829.png,1,0,8,Scuffing;Water drop,,0.0
+25f27ecf-c7c4-4f88-ab99-2a78a59d9a18_000000020870.png,1,0,6,Scuffing,,0.0
+c2b5cd35-67eb-4321-b15d-ace72fe832b6_000000021499.png,1,0,5,Scuffing,,0.0
+57eb6566-e413-4f17-92ad-1e6a2dbef7cb_000000021588.png,1,0,6,Scuffing;Water drop,,0.0
+92b20740-7e47-4b8f-854a-d6dc146faaad_000000021962.png,1,0,5,Scuffing,,0.0
+48d79056-c2af-4db2-847a-4b0e606790aa_000000023491.png,1,0,6,Scuffing,,0.0
+b2d10abc-7eac-4f76-ae5e-b17922a46481_000000024005.png,1,0,23,Scuffing;Scuffing heavy;Water drop,,0.0
+5ad763b3-34c5-4b92-8951-41739d392856_000000025133.png,1,0,2,Contamination light,,0.0
+e4b1d99c-ebb8-4409-990e-40958fceb5a7_000000025247.png,1,0,7,Air bubble;Scuffing,,0.0
+cba3a9b9-0d03-4e30-9688-ba0210ce5122_000000025333.png,1,0,8,Contamination light;Foam residue,,0.0
+55236fe8-43e4-45ed-8cf5-7d2cca446836_000000026799.png,1,0,4,Scuffing heavy,,0.0
+358da06b-0ccd-4dd1-a218-aad9459e9c78_000000026968.png,1,0,5,Scuffing;Water drop,,0.0
+426dfd8d-fdd4-4245-81b4-b98f6f5c6628_000000027255.png,1,0,3,Scuffing heavy,,0.0
+b5e4cf3f-d1ca-4853-bc93-021e542955fc_000000028574.png,1,0,5,Scuffing,,0.0
+5b9ec82f-3a84-4f23-9321-56fe6e3acf3d_000000029296.png,1,0,5,Scuffing,,0.0
+acb0591a-2d15-4fdb-b628-ee3ada7eedda_000000029532.png,1,0,4,Scuffing,,0.0
+a4df1ca5-7213-4a16-91a4-cd52f0fad53e_000000029661.png,1,0,4,Scuffing,,0.0
+1d39bb95-d6a0-47eb-8a7f-aef173ce748a_000000029699.png,1,0,4,Scuffing,,0.0
+7bcfda80-2bd1-4c5e-894e-6517b6d2e0b8_000000030007.png,1,0,4,Scuffing;Water drop,,0.0
+ac924b5d-012e-4099-af42-a2206424352b_000000030021.png,1,0,4,Foam residue;Scuffing,,0.0
+3d264db2-a2d2-4c76-9244-24816f374644_000000030250.png,1,0,24,Scuffing;Scuffing heavy,,0.0
+e55fea04-fca6-4142-84f5-34e87078dce5_000000031167.png,1,0,3,Scuffing,,0.0
+1b1f58b7-4742-42d8-8c3e-a9733eea0870_000000031944.png,1,0,11,Scuffing,,0.0
+675fff7b-ebee-46b0-b005-ddca332ff1a0_000000032187.png,1,0,10,Scuffing heavy,,0.0
+4480c55e-9cc8-401a-9583-d6f2061de33b_000000032622.png,1,0,6,Scuffing,,0.0
+ea3742be-4126-4d59-b41b-af4e70957f09_000000032676.png,1,0,6,Scuffing;Water drop,,0.0
+9e7c1260-0613-4de6-8492-232da754863e_000000033600.png,1,0,5,Scuffing;Scuffing heavy,,0.0
+8df2eaed-2a4b-47af-927e-524e96de7afe_000000035285.png,1,0,4,Scuffing,,0.0

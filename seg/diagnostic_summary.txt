@@ -1,0 +1,17 @@
+Checkpoint: seg/best.pt
+Val F1: 0.9423
+Confusion matrix: TN=2650 FP=286 FN=196 TP=3937
+
+Per-channel firing:
+  {'channel': 'air_bubble', 'threshold_px': 500, 'n_fired': 0, 'fired_on_true_defect': 0, 'fired_on_actual_clean': 0, 'precision': 0.0}
+  {'channel': 'chip', 'threshold_px': 200, 'n_fired': 196, 'fired_on_true_defect': 176, 'fired_on_actual_clean': 20, 'precision': 0.898}
+  {'channel': 'contamination_light', 'threshold_px': 180, 'n_fired': 0, 'fired_on_true_defect': 0, 'fired_on_actual_clean': 0, 'precision': 0.0}
+  {'channel': 'glass_imperfection', 'threshold_px': 100, 'n_fired': 0, 'fired_on_true_defect': 0, 'fired_on_actual_clean': 0, 'precision': 0.0}
+  {'channel': 'scuffing', 'threshold_px': 75000, 'n_fired': 311, 'fired_on_true_defect': 160, 'fired_on_actual_clean': 151, 'precision': 0.5145}
+  {'channel': 'scuffing_heavy', 'threshold_px': 1200, 'n_fired': 0, 'fired_on_true_defect': 0, 'fired_on_actual_clean': 0, 'precision': 0.0}
+  {'channel': 'always_faulty', 'threshold_px': 1, 'n_fired': 3754, 'fired_on_true_defect': 3637, 'fired_on_actual_clean': 117, 'precision': 0.9688}
+
+FP triggers by channel:
+  scuffing: 151
+  always_faulty: 117
+  chip: 20
