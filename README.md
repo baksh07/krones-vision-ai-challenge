@@ -3,7 +3,8 @@
 This repository contains my work for the 1st Krones Vision AI Challenge: an
 image-based approach to deciding whether an empty bottle is reusable. The
 project explores semantic segmentation as an interpretable alternative to
-direct image-level classification.
+direct image-level classification. The Python workflows are organized as an
+installable package with a single command-line entry point.
 
 ## Approach
 
@@ -25,11 +26,12 @@ analysis scripts and notebooks are included.
 | --- | --- |
 | `01_eda_and_split (1).ipynb` | Exploratory analysis and preparation of training metadata and validation splits |
 | `02_segmentation_training_server.ipynb` | Segmentation training notebook |
-| `train_no_roi.py` | Full-image segmentation training |
-| `train_no_roi_768.py` | Full-image training experiment at 768-pixel input size |
-| `generate_submission.py` | Inference and submission generation for the ROI-based model |
-| `generate_submission_v5.py` | Inference and submission generation for the no-ROI model |
-| `diagnose_failures.py` | Validation diagnostics and misclassification analysis |
+| `src/krones_vision_ai/commands/` | Training, inference, and diagnostic command implementations |
+| `src/krones_vision_ai/rules.py` | Shared defect channels and decision thresholds |
+| `src/krones_vision_ai/models.py` | Shared segmentation-model construction |
+| `src/krones_vision_ai/paths.py` | Configurable challenge-data and artifact locations |
+| `tests/` | Focused package and command-line tests |
+| `pyproject.toml` | Package metadata, optional dependencies, and CLI entry point |
 | `splits/` | Precomputed validation fold files |
 | `seg/`, `seg_no_roi/`, `seg_no_roi_768/` | Experiment outputs, metrics, plots, and model checkpoints |
 | `train_enriched.csv`, `category_stats.csv` | Derived training metadata and annotation statistics |
@@ -38,43 +40,77 @@ analysis scripts and notebooks are included.
 
 The image dataset and original annotations are not included. Obtain the
 authorized challenge data separately and arrange it with training images,
-test images, the training annotations, and the sample submission CSV. The
-training and inference scripts currently use Linux paths under
-`/home/dll0202/baksh/`; update their `DATA_DIR` and `ART_DIR` constants to
-match your environment before running them.
+test images, the training annotations, and the sample submission CSV. By
+default, the package looks for challenge data in a `dataset/` directory next
+to the repository's parent directory and writes experiment artifacts to the
+repository. Override these locations with `KRONES_DATA_DIR` and
+`KRONES_ARTIFACT_DIR`, respectively.
 
-The notebooks and scripts use Python with PyTorch, segmentation-models-pytorch,
-Albumentations, OpenCV, NumPy, pandas, scikit-learn, Matplotlib, and
-pycocotools. GPU acceleration is optional but recommended for training.
-Activate an environment with these dependencies installed before running the
-commands below.
+Python 3.10 or newer is required. Install PyTorch for your CPU/GPU environment,
+then install the package and its vision dependencies:
 
-## Running the experiments
+```bash
+python -m pip install -e ".[vision,test]"
+```
+
+The vision extra includes segmentation-models-pytorch, Albumentations, OpenCV,
+NumPy, pandas, scikit-learn, Matplotlib, tqdm, and pycocotools. GPU
+acceleration is optional but recommended for training.
+
+## Running workflows
+
+Run commands from the repository root after installing the package. Set the
+data paths in PowerShell as needed:
+
+```powershell
+$env:KRONES_DATA_DIR = "C:\path\to\challenge-data"
+$env:KRONES_ARTIFACT_DIR = "C:\path\to\experiment-artifacts"
+```
 
 Run the EDA and split-preparation notebook first if you need to regenerate its
-derived files. Then, from the repository root:
+derived files. Train the full-image model with:
 
 ```bash
-python train_no_roi.py
+python -m krones_vision_ai train
 ```
 
-To run the 768-pixel training variant:
+Train the 768-pixel variant:
 
 ```bash
-python train_no_roi_768.py
+python -m krones_vision_ai train-768
 ```
 
-Run validation diagnostics by pointing to a trained checkpoint:
+Command-specific options are forwarded to the corresponding workflow. For
+example, resume training from a checkpoint:
 
 ```bash
-python diagnose_failures.py --ckpt seg_no_roi_768/best.pt
+python -m krones_vision_ai train --resume seg_no_roi/last.pt
 ```
 
-Generate a test submission with the inference script corresponding to the
-checkpoint you trained. For example, `generate_submission_v5.py` expects the
-no-ROI checkpoint under `seg_no_roi/best.pt`; adjust its checkpoint path if
-using a different experiment. The test images and sample submission CSV must
-also be available in the configured data directory.
+Run validation diagnostics:
+
+```bash
+python -m krones_vision_ai diagnose --ckpt seg_no_roi_768/best.pt
+```
+
+Generate submissions with the inference workflow matching the checkpoint:
+
+```bash
+python -m krones_vision_ai infer
+python -m krones_vision_ai infer-roi
+```
+
+The no-ROI inference command expects `seg_no_roi/best.pt`; ROI-based inference
+expects `seg/best.pt`. Both require the test images and sample submission CSV
+in the configured data directory. Other available commands are `diagnose-roi`
+for ROI visualization and `python -m krones_vision_ai --help` for a command
+overview.
+
+Run the focused tests with:
+
+```bash
+python -m pytest
+```
 
 ## Data and checkpoints
 

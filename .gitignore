@@ -3,9 +3,15 @@
 
 # Ignore Python/venv stuff
 venv/
+.venv/
+env/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
 
 # Ignore large temporary files
 *.log
