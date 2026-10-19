@@ -8,20 +8,25 @@ Usage:
     python diagnose_roi_v2.py
 """
 
-def main() -> None:
-    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
 
-    from pathlib import Path
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Visualize bottle ROI detection on test images."
+    )
+    parser.parse_args()
 
     import cv2
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
 
+    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
+
     TEST_DIR = DATA_ROOT / "test_images"
     OUT_DIR = ARTIFACT_ROOT / "seg"
     SUB_PATH = OUT_DIR / "submission.csv"
-
 
     def detect_bottle_roi(
         img_rgb,
@@ -42,16 +47,21 @@ def main() -> None:
             return None, "blank"
         gray_blurred = cv2.medianBlur(gray, 5)
         circles = cv2.HoughCircles(
-            gray_blurred, cv2.HOUGH_GRADIENT, dp=1.5, minDist=W // 2,
-            param1=80, param2=30,
-            minRadius=expected_radius_min, maxRadius=expected_radius_max,
+            gray_blurred,
+            cv2.HOUGH_GRADIENT,
+            dp=1.5,
+            minDist=W // 2,
+            param1=80,
+            param2=30,
+            minRadius=expected_radius_min,
+            maxRadius=expected_radius_max,
         )
         if circles is not None:
             circles = np.round(circles[0]).astype(int)
             cx_img, cy_img = W // 2, H // 2
             center_tol = int(min(W, H) * center_search_frac / 2)
             best_circle, best_score = None, -1.0
-            for (cx, cy, r) in circles:
+            for cx, cy, r in circles:
                 if abs(cx - cx_img) > center_tol or abs(cy - cy_img) > center_tol:
                     continue
                 mask = np.zeros_like(gray)
@@ -65,8 +75,10 @@ def main() -> None:
                     best_circle = (cx, cy, r)
             if best_circle is not None:
                 cx, cy, r = best_circle
-                x = max(0, int(cx - r)); y = max(0, int(cy - r))
-                w = min(W - x, int(2 * r)); h = min(H - y, int(2 * r))
+                x = max(0, int(cx - r))
+                y = max(0, int(cy - r))
+                w = min(W - x, int(2 * r))
+                h = min(H - y, int(2 * r))
                 return (x, y, w, h), "hough"
         _, binary = cv2.threshold(gray, bright_threshold, 255, cv2.THRESH_BINARY)
         n_lbl, _, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
@@ -82,15 +94,14 @@ def main() -> None:
                 return (x, y, w, h), "bright_blob"
         return (368, 251, 512, 512), "fallback"
 
-
     # ============================================================
     # Sample 6 images: 3 predicted Reusable, 3 predicted Not Reusable
     # Skip blank ones (already clearly handled) — pick non-blank cases
     # ============================================================
     sub = pd.read_csv(SUB_PATH)
     print(f"Loaded submission: {len(sub):,} rows")
-    print(f"Predicted Reusable    : {(sub['target']==0).sum():,}")
-    print(f"Predicted Not Reusable: {(sub['target']==1).sum():,}")
+    print(f"Predicted Reusable    : {(sub['target'] == 0).sum():,}")
+    print(f"Predicted Not Reusable: {(sub['target'] == 1).sum():,}")
     print()
 
     # Find non-blank Reusable predictions for visualization
@@ -105,7 +116,7 @@ def main() -> None:
     non_blank_pos = sub[sub["target"] == 1]["image_id"].head(3).tolist()
     samples = non_blank_neg + non_blank_pos
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 11))
+    _fig, axes = plt.subplots(2, 3, figsize=(16, 11))
     axes = axes.flatten()
 
     print("ROI detection results:")
@@ -125,14 +136,22 @@ def main() -> None:
         if roi is not None:
             x, y, w, h = roi
             # Draw the bounding box
-            rect = plt.Rectangle((x, y), w, h, edgecolor='lime', facecolor='none', linewidth=3)
+            rect = plt.Rectangle(
+                (x, y), w, h, edgecolor="lime", facecolor="none", linewidth=3
+            )
             axes[i].add_patch(rect)
             # If Hough was used, also draw the circle
             if status == "hough":
                 cx, cy = x + w // 2, y + h // 2
                 r = w // 2
-                circle = plt.Circle((cx, cy), r, edgecolor='cyan', facecolor='none',
-                                    linewidth=2, linestyle='--')
+                circle = plt.Circle(
+                    (cx, cy),
+                    r,
+                    edgecolor="cyan",
+                    facecolor="none",
+                    linewidth=2,
+                    linestyle="--",
+                )
                 axes[i].add_patch(circle)
         axes[i].set_title(f"pred={pred}, status={status}\n{fname[:40]}", fontsize=10)
         axes[i].axis("off")

@@ -24,41 +24,59 @@ Usage:
     python -m krones_vision_ai diagnose --ckpt seg_no_roi_768/best.pt
     python -m krones_vision_ai diagnose --ckpt seg/best.pt   # the ROI model
 """
+
 from __future__ import annotations
 
+
 def main() -> None:
-    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
-
     import argparse
-    import json
-    from collections import Counter, defaultdict
-    from dataclasses import dataclass
-    from pathlib import Path
-    from typing import Any
-
-    import albumentations as A
-    import cv2
-    import matplotlib.patches as mpatches
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import pandas as pd
-    import torch
-    from albumentations.pytorch import ToTensorV2
-    from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
-    from torch.utils.data import DataLoader, Dataset
-    from tqdm import tqdm
 
     # ============================================================================
     # Args
     # ============================================================================
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", required=True, type=str,
-                        help="Path to checkpoint (e.g. seg_no_roi_768/best.pt)")
-    parser.add_argument("--n-failure-examples", type=int, default=12,
-                        help="How many misclassified examples to visualize")
-    parser.add_argument("--prob-threshold", type=float, default=0.5,
-                        help="Probability threshold for binarizing channel masks")
+    parser.add_argument(
+        "--ckpt",
+        required=True,
+        type=str,
+        help="Path to checkpoint (e.g. seg_no_roi_768/best.pt)",
+    )
+    parser.add_argument(
+        "--n-failure-examples",
+        type=int,
+        default=12,
+        help="How many misclassified examples to visualize",
+    )
+    parser.add_argument(
+        "--prob-threshold",
+        type=float,
+        default=0.5,
+        help="Probability threshold for binarizing channel masks",
+    )
     args = parser.parse_args()
+
+    import json
+    from collections import Counter, defaultdict
+    from dataclasses import dataclass
+    from pathlib import Path
+
+    import albumentations as A
+    import cv2
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+    import torch
+    from albumentations.pytorch import ToTensorV2
+    from sklearn.metrics import (
+        confusion_matrix,
+        f1_score,
+        precision_score,
+        recall_score,
+    )
+    from torch.utils.data import DataLoader, Dataset
+    from tqdm import tqdm
+
+    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
 
     # ============================================================================
     # Paths
@@ -70,7 +88,16 @@ def main() -> None:
     FOLD_CSV = ART_DIR / "splits" / "fold_0.csv"
 
     CKPT_PATH = Path(args.ckpt)
-    assert CKPT_PATH.exists(), f"Missing: {CKPT_PATH}"
+    from krones_vision_ai.paths import require_paths
+
+    require_paths(
+        {
+            "checkpoint": CKPT_PATH,
+            "training images": TRAIN_IMG_DIR,
+            "COCO annotations": COCO_JSON,
+            "validation fold": FOLD_CSV,
+        }
+    )
 
     # Output directory = same as where checkpoint lives
     OUT_DIR = CKPT_PATH.parent
@@ -86,10 +113,8 @@ def main() -> None:
         AGGREGATED_CHANNEL_INDICES,
         CHANNEL_NAMES,
         CHANNEL_THRESHOLDS,
-        DECISION_CHANNELS,
         N_CHANNELS,
     )
-
 
     # ============================================================================
     # Load checkpoint
@@ -103,7 +128,6 @@ def main() -> None:
     print(f"  use_roi_crop       : {saved_cfg.get('use_roi_crop', '?')}")
     print(f"  encoder            : {saved_cfg['encoder_name']}")
     print(f"  arch               : {saved_cfg['arch']}\n")
-
 
     @dataclass
     class InferCfg:
@@ -121,21 +145,17 @@ def main() -> None:
         def area_scale(self) -> float:
             return (self.orig_h * self.orig_w) / (self.img_size * self.img_size)
 
-
     CFG = InferCfg()
-
 
     # ============================================================================
     # Build model and load weights
     # ============================================================================
     from krones_vision_ai.models import build_model
 
-
     model = build_model(CFG, n_classes=N_CHANNELS, pretrained=False).to(DEVICE)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print("Model loaded ✓\n")
-
 
     # ============================================================================
     # COCO indexing for ROI lookup (only used if use_roi_crop)
@@ -144,10 +164,8 @@ def main() -> None:
     with open(COCO_JSON) as f:
         coco = json.load(f)
 
-
     def _normalise(name: str) -> str:
         return name.replace("\u2013", "-").replace("\u2014", "-").strip()
-
 
     cat_id_to_name = {c["id"]: _normalise(c["name"]) for c in coco["categories"]}
     img_id_to_meta = {im["id"]: im for im in coco["images"]}
@@ -162,22 +180,26 @@ def main() -> None:
                 roi_by_image[meta["file_name"]] = (int(x), int(y), int(w), int(h))
     print(f"Loaded {len(roi_by_image):,} ROI bboxes\n")
 
-
     # ============================================================================
     # Val dataset (mirror what training did)
     # ============================================================================
     MEAN = (0.485, 0.456, 0.406)
     STD = (0.229, 0.224, 0.225)
 
-
     def build_val_aug(size: int) -> A.Compose:
-        return A.Compose([
-            A.LongestMaxSize(max_size=size),
-            A.PadIfNeeded(min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT, value=0),
-            A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2(),
-        ])
-
+        return A.Compose(
+            [
+                A.LongestMaxSize(max_size=size),
+                A.PadIfNeeded(
+                    min_height=size,
+                    min_width=size,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                ),
+                A.Normalize(mean=MEAN, std=STD),
+                ToTensorV2(),
+            ]
+        )
 
     class ValDataset(Dataset):
         def __init__(self, df, img_dir, transform, use_roi, roi_by_image):
@@ -204,63 +226,43 @@ def main() -> None:
                     x, y, w, h = roi
                     H, W = img.shape[:2]
                     pad = 10
-                    x0 = max(0, x - pad); y0 = max(0, y - pad)
-                    x1 = min(W, x + w + pad); y1 = min(H, y + h + pad)
+                    x0 = max(0, x - pad)
+                    y0 = max(0, y - pad)
+                    x1 = min(W, x + w + pad)
+                    y1 = min(H, y + h + pad)
                     if x1 > x0 and y1 > y0:
                         img = img[y0:y1, x0:x1]
 
             out = self.transform(image=img)
-            return {"image": out["image"], "image_id": fname,
-                    "target": int(row["target"])}
-
+            return {
+                "image": out["image"],
+                "image_id": fname,
+                "target": int(row["target"]),
+            }
 
     fold = pd.read_csv(FOLD_CSV)
     val_df = fold[fold["split"] == "val"].reset_index(drop=True)
     print(f"Val set size: {len(val_df):,}")
-    print(f"  target=0 (Reusable):     {(val_df['target']==0).sum():,}  ({(val_df['target']==0).mean()*100:.1f}%)")
-    print(f"  target=1 (Not Reusable): {(val_df['target']==1).sum():,}  ({(val_df['target']==1).mean()*100:.1f}%)")
+    print(
+        f"  target=0 (Reusable):     {(val_df['target'] == 0).sum():,}  ({(val_df['target'] == 0).mean() * 100:.1f}%)"
+    )
+    print(
+        f"  target=1 (Not Reusable): {(val_df['target'] == 1).sum():,}  ({(val_df['target'] == 1).mean() * 100:.1f}%)"
+    )
     print()
 
-    val_ds = ValDataset(val_df, TRAIN_IMG_DIR, build_val_aug(CFG.img_size),
-                        CFG.use_roi_crop, roi_by_image)
-    val_loader = DataLoader(val_ds, batch_size=CFG.batch_size, shuffle=False,
-                             num_workers=4, pin_memory=True)
+    val_ds = ValDataset(
+        val_df,
+        TRAIN_IMG_DIR,
+        build_val_aug(CFG.img_size),
+        CFG.use_roi_crop,
+        roi_by_image,
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=CFG.batch_size, shuffle=False, num_workers=4, pin_memory=True
+    )
 
-
-    # ============================================================================
-    # Decision function (returns verdict + per-channel triggers for diagnosis)
-    # ============================================================================
-    @torch.no_grad()
-    def predict_with_reasons(logits, channel_thresholds, prob_threshold,
-                              scale_to_full, aggregated_channels):
-        """For each image, return verdict + a list of (channel_idx, blob_area) triggers."""
-        probs = torch.sigmoid(logits).detach().cpu().numpy()
-        bin_masks = (probs > prob_threshold).astype(np.uint8)
-        B, C, H, W = bin_masks.shape
-        out_verdicts = np.zeros(B, dtype=np.uint8)
-        out_triggers = [[] for _ in range(B)]
-        for b in range(B):
-            for c in range(C):
-                thr = channel_thresholds[c]
-                if thr is None:
-                    continue
-                mask = bin_masks[b, c]
-                if not mask.any():
-                    continue
-                n_lbl, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-                if n_lbl <= 1:
-                    continue
-                blob_areas = stats[1:, cv2.CC_STAT_AREA]
-                if c in aggregated_channels:
-                    area_used = int(blob_areas.sum())
-                else:
-                    area_used = int(blob_areas.max())
-                scaled = area_used * scale_to_full
-                if scaled > thr:
-                    out_verdicts[b] = 1
-                    out_triggers[b].append((c, int(scaled)))
-        return out_verdicts, out_triggers, probs
-
+    from krones_vision_ai.decisions import predict_from_logits
 
     # ============================================================================
     # Run inference on the entire val set
@@ -269,24 +271,25 @@ def main() -> None:
     all_y_true, all_y_pred, all_ids, all_triggers = [], [], [], []
     agg = AGGREGATED_CHANNEL_INDICES if CFG.aggregate_scuffing else set()
 
-    with torch.no_grad():
-        with torch.amp.autocast("cuda", enabled=True):
-            for batch in tqdm(val_loader, desc="val"):
-                img = batch["image"].to(DEVICE, non_blocking=True)
-                logits = model(img)
-                verdicts, triggers, _ = predict_with_reasons(
-                    logits, CHANNEL_THRESHOLDS, args.prob_threshold,
-                    CFG.area_scale, agg
-                )
-                all_y_true.extend(batch["target"].tolist())
-                all_y_pred.extend(verdicts.tolist())
-                all_ids.extend(batch["image_id"])
-                all_triggers.extend(triggers)
+    with torch.no_grad(), torch.amp.autocast("cuda", enabled=True):
+        for batch in tqdm(val_loader, desc="val"):
+            img = batch["image"].to(DEVICE, non_blocking=True)
+            logits = model(img)
+            predictions = predict_from_logits(
+                logits,
+                CHANNEL_THRESHOLDS,
+                probability_threshold=args.prob_threshold,
+                area_scale=CFG.area_scale,
+                aggregated_channels=agg,
+            )
+            all_y_true.extend(batch["target"].tolist())
+            all_y_pred.extend(predictions.predictions.tolist())
+            all_ids.extend(batch["image_id"])
+            all_triggers.extend(predictions.triggers)
 
     y_true = np.array(all_y_true)
     y_pred = np.array(all_y_pred)
     print(f"\nDone. {len(y_true):,} val images processed.\n")
-
 
     # ============================================================================
     # Confusion matrix and overall metrics
@@ -302,17 +305,24 @@ def main() -> None:
     print("=" * 60)
     print("OVERALL METRICS")
     print("=" * 60)
-    print(f"  TP (correctly flagged defective)     : {tp:>5,}  ({100*tp/total:.1f}%)")
-    print(f"  TN (correctly flagged reusable)      : {tn:>5,}  ({100*tn/total:.1f}%)")
-    print(f"  FP (false alarm — said defect, isn't): {fp:>5,}  ({100*fp/total:.1f}%)  ← over-firing")
-    print(f"  FN (missed defect — said safe, isn't): {fn:>5,}  ({100*fn/total:.1f}%)  ← critical errors")
-    print(f"  --")
+    print(
+        f"  TP (correctly flagged defective)     : {tp:>5,}  ({100 * tp / total:.1f}%)"
+    )
+    print(
+        f"  TN (correctly flagged reusable)      : {tn:>5,}  ({100 * tn / total:.1f}%)"
+    )
+    print(
+        f"  FP (false alarm — said defect, isn't): {fp:>5,}  ({100 * fp / total:.1f}%)  ← over-firing"
+    )
+    print(
+        f"  FN (missed defect — said safe, isn't): {fn:>5,}  ({100 * fn / total:.1f}%)  ← critical errors"
+    )
+    print("  --")
     print(f"  Accuracy : {acc:.4f}")
     print(f"  Precision: {prec:.4f}")
     print(f"  Recall   : {rec:.4f}")
     print(f"  F1       : {f1:.4f}")
     print()
-
 
     # ============================================================================
     # Per-channel firing analysis
@@ -322,12 +332,14 @@ def main() -> None:
     print("PER-CHANNEL FIRING ANALYSIS")
     print("=" * 60)
 
-    channel_stats = defaultdict(lambda: {"n_fired": 0, "fired_on_true_defect": 0, "fired_on_actual_clean": 0})
+    channel_stats = defaultdict(
+        lambda: {"n_fired": 0, "fired_on_true_defect": 0, "fired_on_actual_clean": 0}
+    )
 
     for i in range(len(y_true)):
         triggers = all_triggers[i]
         actual = y_true[i]
-        fired_channels = set(c for c, _ in triggers)
+        fired_channels = {channel for channel, _ in triggers}
         for c in fired_channels:
             channel_stats[c]["n_fired"] += 1
             if actual == 1:
@@ -336,25 +348,30 @@ def main() -> None:
                 channel_stats[c]["fired_on_actual_clean"] += 1
 
     per_channel_data = []
-    print(f"{'Channel':<22} {'n_fired':>8} {'on_defect':>10} {'on_clean':>10} {'precision':>10}")
+    print(
+        f"{'Channel':<22} {'n_fired':>8} {'on_defect':>10} {'on_clean':>10} {'precision':>10}"
+    )
     print("-" * 64)
     for c in range(N_CHANNELS):
         if CHANNEL_THRESHOLDS[c] is None:
-            continue   # harmless never decides
+            continue  # harmless never decides
         s = channel_stats[c]
         n = s["n_fired"]
         p = s["fired_on_true_defect"] / n if n > 0 else 0.0
-        print(f"{CHANNEL_NAMES[c]:<22} {n:>8} {s['fired_on_true_defect']:>10} {s['fired_on_actual_clean']:>10} {p:>10.4f}")
-        per_channel_data.append({
-            "channel": CHANNEL_NAMES[c],
-            "threshold_px": CHANNEL_THRESHOLDS[c],
-            "n_fired": n,
-            "fired_on_true_defect": s["fired_on_true_defect"],
-            "fired_on_actual_clean": s["fired_on_actual_clean"],
-            "precision": round(p, 4),
-        })
+        print(
+            f"{CHANNEL_NAMES[c]:<22} {n:>8} {s['fired_on_true_defect']:>10} {s['fired_on_actual_clean']:>10} {p:>10.4f}"
+        )
+        per_channel_data.append(
+            {
+                "channel": CHANNEL_NAMES[c],
+                "threshold_px": CHANNEL_THRESHOLDS[c],
+                "n_fired": n,
+                "fired_on_true_defect": s["fired_on_true_defect"],
+                "fired_on_actual_clean": s["fired_on_actual_clean"],
+                "precision": round(p, 4),
+            }
+        )
     print()
-
 
     # ============================================================================
     # Failure analysis: what triggered the FPs and what was missed in FNs
@@ -383,11 +400,10 @@ def main() -> None:
     print("FALSE NEGATIVE COUNT (model said 0, truth was 1)")
     print("=" * 60)
     print(f"  Number of FNs: {fn}")
-    print(f"  These are critical errors — defective bottles passed through.")
-    print(f"  We can't easily diagnose without ground-truth masks (would need to")
-    print(f"  rasterize the COCO annotations and compare to model output).")
+    print("  These are critical errors — defective bottles passed through.")
+    print("  We can't easily diagnose without ground-truth masks (would need to")
+    print("  rasterize the COCO annotations and compare to model output).")
     print()
-
 
     # ============================================================================
     # Save text report and CSV
@@ -398,8 +414,7 @@ def main() -> None:
         f.write(f"Val F1: {f1:.4f}\n")
         f.write(f"Confusion matrix: TN={tn} FP={fp} FN={fn} TP={tp}\n\n")
         f.write("Per-channel firing:\n")
-        for d in per_channel_data:
-            f.write(f"  {d}\n")
+        f.writelines(f"  {d}\n" for d in per_channel_data)
         f.write("\nFP triggers by channel:\n")
         for ch, count in fp_triggers_by_channel.most_common():
             f.write(f"  {ch}: {count}\n")
@@ -409,11 +424,10 @@ def main() -> None:
     pd.DataFrame(per_channel_data).to_csv(per_channel_csv, index=False)
     print(f"✓ Saved {per_channel_csv}")
 
-
     # ============================================================================
     # Confusion matrix visualization
     # ============================================================================
-    fig, ax = plt.subplots(figsize=(8, 6))
+    _fig, ax = plt.subplots(figsize=(8, 6))
     cm_normalized = cm.astype(float) / cm.sum()
     im = ax.imshow(cm, cmap="Blues")
     ax.set_xticks([0, 1])
@@ -428,8 +442,16 @@ def main() -> None:
             cell = cm[i, j]
             pct = cm_normalized[i, j] * 100
             color = "white" if cell > cm.max() / 2 else "black"
-            ax.text(j, i, f"{cell:,}\n({pct:.1f}%)",
-                    ha="center", va="center", color=color, fontsize=14, fontweight="bold")
+            ax.text(
+                j,
+                i,
+                f"{cell:,}\n({pct:.1f}%)",
+                ha="center",
+                va="center",
+                color=color,
+                fontsize=14,
+                fontweight="bold",
+            )
     plt.colorbar(im)
     plt.tight_layout()
     cm_path = OUT_DIR / "confusion_matrix.png"
@@ -437,19 +459,30 @@ def main() -> None:
     print(f"✓ Saved {cm_path}")
     plt.close()
 
-
     # ============================================================================
     # Per-channel firing visualization
     # ============================================================================
     if per_channel_data:
-        fig, ax = plt.subplots(figsize=(12, 6))
+        _fig, ax = plt.subplots(figsize=(12, 6))
         channels = [d["channel"] for d in per_channel_data]
         fired_def = [d["fired_on_true_defect"] for d in per_channel_data]
         fired_clean = [d["fired_on_actual_clean"] for d in per_channel_data]
         x = np.arange(len(channels))
         width = 0.35
-        ax.bar(x - width/2, fired_def, width, label="Fired on true defect (good)", color="#2ca02c")
-        ax.bar(x + width/2, fired_clean, width, label="Fired on clean image (false alarm)", color="#d62728")
+        ax.bar(
+            x - width / 2,
+            fired_def,
+            width,
+            label="Fired on true defect (good)",
+            color="#2ca02c",
+        )
+        ax.bar(
+            x + width / 2,
+            fired_clean,
+            width,
+            label="Fired on clean image (false alarm)",
+            color="#d62728",
+        )
         ax.set_xticks(x)
         ax.set_xticklabels(channels, rotation=30, ha="right")
         ax.set_ylabel("Number of images channel fired on")
@@ -460,7 +493,6 @@ def main() -> None:
         plt.savefig(ch_path, dpi=120, bbox_inches="tight")
         print(f"✓ Saved {ch_path}")
         plt.close()
-
 
     # ============================================================================
     # Failure examples — show 12 misclassified images
@@ -476,23 +508,27 @@ def main() -> None:
     if samples:
         cols = 4
         rows = (len(samples) + cols - 1) // cols
-        fig, axes = plt.subplots(rows, cols, figsize=(4*cols, 4*rows))
+        _fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
         axes = axes.flatten() if rows > 1 else axes
         for plot_i, val_i in enumerate(samples):
             fname = all_ids[val_i]
             img = cv2.imread(str(TRAIN_IMG_DIR / fname), cv2.IMREAD_COLOR)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             kind = "FP" if y_true[val_i] == 0 else "FN"
-            triggers_str = ", ".join(f"{CHANNEL_NAMES[c]}({a})" for c, a in all_triggers[val_i])
+            triggers_str = ", ".join(
+                f"{CHANNEL_NAMES[c]}({a})" for c, a in all_triggers[val_i]
+            )
             if not triggers_str:
                 triggers_str = "(none)"
             ax = axes[plot_i] if isinstance(axes, np.ndarray) else axes
             ax.imshow(img)
-            ax.set_title(f"{kind}: true={y_true[val_i]}, pred={y_pred[val_i]}\n"
-                          f"{fname[:30]}\nTriggers: {triggers_str[:40]}",
-                          fontsize=8)
+            ax.set_title(
+                f"{kind}: true={y_true[val_i]}, pred={y_pred[val_i]}\n"
+                f"{fname[:30]}\nTriggers: {triggers_str[:40]}",
+                fontsize=8,
+            )
             ax.axis("off")
-        for ax in axes[len(samples):]:
+        for ax in axes[len(samples) :]:
             ax.axis("off")
         plt.tight_layout()
         fail_path = OUT_DIR / "failure_examples.png"

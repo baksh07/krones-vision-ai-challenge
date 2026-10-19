@@ -26,16 +26,33 @@ Usage:
     # detach: Ctrl+B then D
     # reattach: tmux attach -t train
 """
+
 from __future__ import annotations
 
-def main() -> None:
-    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
 
+def main() -> None:
     import argparse
+
+    # ============================================================================
+    # Args
+    # ============================================================================
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint .pt to resume from (e.g. seg_no_roi/last.pt)",
+    )
+    parser.add_argument("--epochs", type=int, default=25)
+    parser.add_argument("--img-size", type=int, default=768)
+    parser.add_argument("--batch-size", type=int, default=12)
+    parser.add_argument("--lr", type=float, default=4e-4)
+    args = parser.parse_args()
+
     import json
     import time
     from collections import defaultdict
-    from dataclasses import dataclass, field, asdict
+    from dataclasses import asdict, dataclass
     from pathlib import Path
     from typing import Any
 
@@ -44,47 +61,43 @@ def main() -> None:
     import numpy as np
     import pandas as pd
     import torch
-    import torch.nn as nn
     from albumentations.pytorch import ToTensorV2
     from sklearn.metrics import f1_score, precision_score, recall_score
+    from torch import nn
     from torch.utils.data import DataLoader, Dataset
     from tqdm import tqdm
 
-    # ============================================================================
-    # Args
-    # ============================================================================
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--resume", type=str, default=None,
-                        help="Path to checkpoint .pt to resume from (e.g. seg_no_roi/last.pt)")
-    parser.add_argument("--epochs", type=int, default=25)
-    parser.add_argument("--img-size", type=int, default=768)
-    parser.add_argument("--batch-size", type=int, default=12)
-    parser.add_argument("--lr", type=float, default=4e-4)
-    args = parser.parse_args()
-
+    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
 
     # ============================================================================
     # Paths
     # ============================================================================
     DATA_DIR = DATA_ROOT
     ART_DIR = ARTIFACT_ROOT
-    OUT_DIR = ART_DIR / "seg_no_roi"   # NEW directory; don't overwrite the v1 best.pt
+    OUT_DIR = ART_DIR / "seg_no_roi"  # NEW directory; don't overwrite the v1 best.pt
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     TRAIN_IMG_DIR = DATA_DIR / "train_images"
     COCO_JSON = DATA_DIR / "train_annotations.json"
     FOLD_CSV = ART_DIR / "splits" / "fold_0.csv"
 
-    assert TRAIN_IMG_DIR.exists(), f"Missing: {TRAIN_IMG_DIR}"
-    assert COCO_JSON.exists(), f"Missing: {COCO_JSON}"
-    assert FOLD_CSV.exists(), f"Missing: {FOLD_CSV}"
+    from krones_vision_ai.paths import require_paths
+
+    require_paths(
+        {
+            "training images": TRAIN_IMG_DIR,
+            "COCO annotations": COCO_JSON,
+            "validation fold": FOLD_CSV,
+        }
+    )
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {DEVICE}")
     if DEVICE.type == "cuda":
-        print(f"GPU: {torch.cuda.get_device_name(0)}, "
-              f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-
+        print(
+            f"GPU: {torch.cuda.get_device_name(0)}, "
+            f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB"
+        )
 
     # ============================================================================
     # Config
@@ -93,7 +106,7 @@ def main() -> None:
     class Cfg:
         img_size: int = args.img_size
         batch_size: int = args.batch_size
-        num_workers: int = 4              # 4 instead of 8 for stability
+        num_workers: int = 4  # 4 instead of 8 for stability
         epochs: int = args.epochs
         lr: float = args.lr
         weight_decay: float = 1e-5
@@ -116,9 +129,8 @@ def main() -> None:
         def area_scale(self) -> float:
             return (self.orig_h * self.orig_w) / (self.img_size * self.img_size)
 
-
     CFG = Cfg()
-    print(f"\nConfig:")
+    print("\nConfig:")
     print(f"  img_size       : {CFG.img_size}")
     print(f"  batch_size     : {CFG.batch_size}")
     print(f"  num_workers    : {CFG.num_workers}")
@@ -127,7 +139,6 @@ def main() -> None:
     print(f"  use_roi_crop   : {CFG.use_roi_crop}  (key change from v1)")
     print(f"  area_scale     : {CFG.area_scale:.4f}")
     print(f"  output dir     : {OUT_DIR}")
-
 
     # ============================================================================
     # Channels (same scheme as v1 — collapse 26 categories into 8 decision classes)
@@ -140,10 +151,8 @@ def main() -> None:
         N_CHANNELS,
     )
 
-
     def _normalise(name: str) -> str:
         return name.replace("\u2013", "-").replace("\u2014", "-").strip()
-
 
     # ============================================================================
     # COCO indexing
@@ -164,7 +173,9 @@ def main() -> None:
         for cat_name in DECISION_CHANNELS[name]["cats"]:
             name_to_channel[_normalise(cat_name)] = ch_idx
 
-    print(f"Loaded {len(coco['annotations']):,} annotations across {len(coco['images']):,} images")
+    print(
+        f"Loaded {len(coco['annotations']):,} annotations across {len(coco['images']):,} images"
+    )
     print(f"ROI category ids: {roi_cat_ids}")
 
     polys_by_image: dict[str, list[tuple[int, Any]]] = defaultdict(list)
@@ -183,7 +194,6 @@ def main() -> None:
 
     print(f"Built polygons for {len(polys_by_image):,} images")
 
-
     # ============================================================================
     # Mask rasterization (fixed for OpenCV 4.13 contiguous-array requirement)
     # ============================================================================
@@ -194,20 +204,22 @@ def main() -> None:
                 for poly in seg:
                     if len(poly) < 6:
                         continue
-                    pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2).round().astype(np.int32)
+                    pts = (
+                        np.asarray(poly, dtype=np.float32)
+                        .reshape(-1, 2)
+                        .round()
+                        .astype(np.int32)
+                    )
                     cv2.fillPoly(mask_chw[ch_idx], [pts], 1)
             elif isinstance(seg, dict):
-                try:
-                    from pycocotools import mask as mask_utils
-                    rle = seg
-                    if isinstance(rle.get("counts"), list):
-                        rle = mask_utils.frPyObjects([rle], height, width)[0]
-                    m = mask_utils.decode(rle)
-                    mask_chw[ch_idx] |= m.astype(np.uint8)
-                except Exception:
-                    pass
-        return np.ascontiguousarray(mask_chw.transpose(1, 2, 0))
+                from pycocotools import mask as mask_utils
 
+                rle = seg
+                if isinstance(rle.get("counts"), list):
+                    rle = mask_utils.frPyObjects([rle], height, width)[0]
+                decoded_mask = mask_utils.decode(rle)
+                mask_chw[ch_idx] |= decoded_mask.astype(np.uint8)
+        return np.ascontiguousarray(mask_chw.transpose(1, 2, 0))
 
     # ============================================================================
     # Augmentations
@@ -215,31 +227,58 @@ def main() -> None:
     MEAN = (0.485, 0.456, 0.406)
     STD = (0.229, 0.224, 0.225)
 
-
     def build_train_aug(size: int) -> A.Compose:
-        return A.Compose([
-            A.LongestMaxSize(max_size=size),
-            A.PadIfNeeded(min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT, value=0),
-            A.HorizontalFlip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.10, rotate_limit=15, p=0.5,
-                               border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0),
-            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-            A.RandomGamma(gamma_limit=(80, 120), p=0.3),
-            A.GaussNoise(var_limit=(5.0, 25.0), p=0.3),
-            A.CoarseDropout(max_holes=8, max_height=24, max_width=24, fill_value=0, mask_fill_value=0, p=0.3),
-            A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2(),
-        ])
-
+        return A.Compose(
+            [
+                A.LongestMaxSize(max_size=size),
+                A.PadIfNeeded(
+                    min_height=size,
+                    min_width=size,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                ),
+                A.HorizontalFlip(p=0.5),
+                A.ShiftScaleRotate(
+                    shift_limit=0.05,
+                    scale_limit=0.10,
+                    rotate_limit=15,
+                    p=0.5,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                    mask_value=0,
+                ),
+                A.RandomBrightnessContrast(
+                    brightness_limit=0.2, contrast_limit=0.2, p=0.5
+                ),
+                A.RandomGamma(gamma_limit=(80, 120), p=0.3),
+                A.GaussNoise(var_limit=(5.0, 25.0), p=0.3),
+                A.CoarseDropout(
+                    max_holes=8,
+                    max_height=24,
+                    max_width=24,
+                    fill_value=0,
+                    mask_fill_value=0,
+                    p=0.3,
+                ),
+                A.Normalize(mean=MEAN, std=STD),
+                ToTensorV2(),
+            ]
+        )
 
     def build_val_aug(size: int) -> A.Compose:
-        return A.Compose([
-            A.LongestMaxSize(max_size=size),
-            A.PadIfNeeded(min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT, value=0),
-            A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2(),
-        ])
-
+        return A.Compose(
+            [
+                A.LongestMaxSize(max_size=size),
+                A.PadIfNeeded(
+                    min_height=size,
+                    min_width=size,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                ),
+                A.Normalize(mean=MEAN, std=STD),
+                ToTensorV2(),
+            ]
+        )
 
     # ============================================================================
     # Dataset (no ROI crop — that's the whole point of this script)
@@ -277,27 +316,26 @@ def main() -> None:
                 "image_id": fname,
             }
 
-
     # ============================================================================
     # Model
     # ============================================================================
     from krones_vision_ai.models import build_model
 
-
     # ============================================================================
     # Loss — weighted Dice + BCE
     # ============================================================================
-    CHANNEL_LOSS_WEIGHTS = torch.tensor([
-        2.0,   # air_bubble
-        2.0,   # chip
-        2.0,   # contamination_light
-        3.0,   # glass_imperfection
-        1.0,   # scuffing
-        1.5,   # scuffing_heavy
-        1.0,   # always_faulty
-        0.5,   # harmless
-    ])
-
+    CHANNEL_LOSS_WEIGHTS = torch.tensor(
+        [
+            2.0,  # air_bubble
+            2.0,  # chip
+            2.0,  # contamination_light
+            3.0,  # glass_imperfection
+            1.0,  # scuffing
+            1.5,  # scuffing_heavy
+            1.0,  # always_faulty
+            0.5,  # harmless
+        ]
+    )
 
     class WeightedDiceBCE(nn.Module):
         def __init__(self, channel_weights):
@@ -308,54 +346,22 @@ def main() -> None:
             probs = torch.sigmoid(logits)
             # Per-channel Dice
             eps = 1e-5
-            cw = self.cw.view(1, -1, 1, 1).to(probs.device)
             dims = (0, 2, 3)
             intersection = (probs * mask).sum(dim=dims)
             denom = (probs + mask).sum(dim=dims) + eps
             dice = 1 - (2 * intersection + eps) / denom  # (C,)
             dice_loss = (dice * self.cw.to(probs.device)).mean()
             # Per-channel BCE
-            bce = nn.functional.binary_cross_entropy_with_logits(logits, mask, reduction="none")
+            bce = nn.functional.binary_cross_entropy_with_logits(
+                logits, mask, reduction="none"
+            )
             bce = (bce.mean(dim=(0, 2, 3)) * self.cw.to(probs.device)).mean()
             return 0.5 * dice_loss + 0.5 * bce
-
 
     # ============================================================================
     # Decision function
     # ============================================================================
-    @torch.no_grad()
-    def predict_binary_from_logits(logits, channel_thresholds, prob_threshold=0.5,
-                                    scale_to_full=1.0, aggregated_channels=None):
-        if aggregated_channels is None:
-            aggregated_channels = set()
-        probs = torch.sigmoid(logits).detach().cpu().numpy()
-        bin_masks = (probs > prob_threshold).astype(np.uint8)
-        B, C, H, W = bin_masks.shape
-        out = np.zeros(B, dtype=np.uint8)
-        for b in range(B):
-            verdict = 0
-            for c in range(C):
-                thr = channel_thresholds[c]
-                if thr is None:
-                    continue
-                mask = bin_masks[b, c]
-                if not mask.any():
-                    continue
-                n_lbl, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-                if n_lbl <= 1:
-                    continue
-                blob_areas = stats[1:, cv2.CC_STAT_AREA]
-                if c in aggregated_channels:
-                    area_used = int(blob_areas.sum())
-                else:
-                    area_used = int(blob_areas.max())
-                scaled = area_used * scale_to_full
-                if scaled > thr:
-                    verdict = 1
-                    break
-            out[b] = verdict
-        return out
-
+    from krones_vision_ai.decisions import predict_from_logits
 
     # ============================================================================
     # DataLoaders
@@ -366,24 +372,39 @@ def main() -> None:
         val_df = fold[fold["split"] == "val"].reset_index(drop=True)
         print(f"\nFold 0 split: {len(train_df):,} train + {len(val_df):,} val")
 
-        train_ds = KronesSegDataset(train_df, TRAIN_IMG_DIR, polys_by_image, N_CHANNELS,
-                                     build_train_aug(cfg.img_size))
-        val_ds = KronesSegDataset(val_df, TRAIN_IMG_DIR, polys_by_image, N_CHANNELS,
-                                   build_val_aug(cfg.img_size))
+        train_ds = KronesSegDataset(
+            train_df,
+            TRAIN_IMG_DIR,
+            polys_by_image,
+            N_CHANNELS,
+            build_train_aug(cfg.img_size),
+        )
+        val_ds = KronesSegDataset(
+            val_df,
+            TRAIN_IMG_DIR,
+            polys_by_image,
+            N_CHANNELS,
+            build_val_aug(cfg.img_size),
+        )
 
         train_loader = DataLoader(
-            train_ds, batch_size=cfg.batch_size, shuffle=True,
-            num_workers=cfg.num_workers, pin_memory=True,
+            train_ds,
+            batch_size=cfg.batch_size,
+            shuffle=True,
+            num_workers=cfg.num_workers,
+            pin_memory=True,
             persistent_workers=True,  # KEY: don't tear down workers between epochs
             drop_last=True,
         )
         val_loader = DataLoader(
-            val_ds, batch_size=cfg.batch_size, shuffle=False,
-            num_workers=cfg.num_workers, pin_memory=True,
+            val_ds,
+            batch_size=cfg.batch_size,
+            shuffle=False,
+            num_workers=cfg.num_workers,
+            pin_memory=True,
             persistent_workers=True,
         )
         return train_loader, val_loader
-
 
     # ============================================================================
     # Evaluate
@@ -398,10 +419,12 @@ def main() -> None:
             y_true = batch["target"].numpy()
             with torch.amp.autocast("cuda", enabled=cfg.amp):
                 logits = model(img)
-            verdicts = predict_binary_from_logits(
-                logits, CHANNEL_THRESHOLDS, prob_threshold=0.5,
-                scale_to_full=cfg.area_scale, aggregated_channels=agg,
-            )
+            verdicts = predict_from_logits(
+                logits,
+                CHANNEL_THRESHOLDS,
+                area_scale=cfg.area_scale,
+                aggregated_channels=agg,
+            ).predictions
             y_true_all.append(y_true)
             y_pred_all.append(verdicts)
         y_true = np.concatenate(y_true_all)
@@ -412,26 +435,26 @@ def main() -> None:
             "recall": recall_score(y_true, y_pred, zero_division=0),
         }
 
-
     # ============================================================================
     # Training
     # ============================================================================
     def save_checkpoint(path, model, optimizer, scheduler, scaler, epoch, val_f1, cfg):
         ckpt = {
-            "model_state":          model.state_dict(),
-            "optimizer_state":      optimizer.state_dict(),
-            "scheduler_state":      scheduler.state_dict() if scheduler is not None else None,
-            "scaler_state":         scaler.state_dict(),
-            "epoch":                epoch,
-            "val_f1":               val_f1,
-            "cfg":                  asdict(cfg),
-            "channel_names":        CHANNEL_NAMES,
-            "channel_thresholds":   CHANNEL_THRESHOLDS,
-            "area_scale":           cfg.area_scale,
-            "aggregate_scuffing":   cfg.aggregate_scuffing,
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict()
+            if scheduler is not None
+            else None,
+            "scaler_state": scaler.state_dict(),
+            "epoch": epoch,
+            "val_f1": val_f1,
+            "cfg": asdict(cfg),
+            "channel_names": CHANNEL_NAMES,
+            "channel_thresholds": CHANNEL_THRESHOLDS,
+            "area_scale": cfg.area_scale,
+            "aggregate_scuffing": cfg.aggregate_scuffing,
         }
         torch.save(ckpt, path)
-
 
     def append_history(path: Path, row: dict):
         """Append one row to the history CSV — write after every epoch, not at the end."""
@@ -441,16 +464,19 @@ def main() -> None:
         else:
             df.to_csv(path, mode="w", header=True, index=False)
 
-
     def train(cfg, resume_path=None):
         train_loader, val_loader = make_loaders(cfg)
 
         model = build_model(cfg, n_classes=N_CHANNELS).to(DEVICE)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+        )
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer, max_lr=cfg.lr,
+            optimizer,
+            max_lr=cfg.lr,
             total_steps=cfg.epochs * len(train_loader),
-            pct_start=0.05, anneal_strategy="cos",
+            pct_start=0.05,
+            anneal_strategy="cos",
         )
         scaler = torch.amp.GradScaler("cuda", enabled=cfg.amp)
         loss_fn = WeightedDiceBCE(CHANNEL_LOSS_WEIGHTS).to(DEVICE)
@@ -467,7 +493,9 @@ def main() -> None:
             scaler.load_state_dict(ckpt["scaler_state"])
             start_epoch = ckpt["epoch"] + 1
             best_f1 = ckpt.get("val_f1", 0.0)
-            print(f"    Resumed at epoch {start_epoch}, prior best F1 = {best_f1:.4f}\n")
+            print(
+                f"    Resumed at epoch {start_epoch}, prior best F1 = {best_f1:.4f}\n"
+            )
 
         history_path = OUT_DIR / "history.csv"
         best_path = OUT_DIR / "best.pt"
@@ -493,36 +521,61 @@ def main() -> None:
                 scheduler.step()
                 running_loss += loss.item()
                 n_batches += 1
-                pbar.set_postfix(loss=f"{running_loss/n_batches:.4f}",
-                                  lr=f"{optimizer.param_groups[0]['lr']:.2e}")
+                pbar.set_postfix(
+                    loss=f"{running_loss / n_batches:.4f}",
+                    lr=f"{optimizer.param_groups[0]['lr']:.2e}",
+                )
 
             train_loss = running_loss / max(1, n_batches)
             epoch_time = time.time() - t0
 
             # --- Validate ---
             metrics = evaluate(model, val_loader, cfg)
-            print(f"  → val F1={metrics['f1']:.4f}  P={metrics['precision']:.4f}  R={metrics['recall']:.4f}  "
-                  f"(epoch took {epoch_time:.1f}s)")
+            print(
+                f"  → val F1={metrics['f1']:.4f}  P={metrics['precision']:.4f}  R={metrics['recall']:.4f}  "
+                f"(epoch took {epoch_time:.1f}s)"
+            )
 
             # --- Save checkpoints (always last.pt, also best.pt if improved) ---
-            save_checkpoint(last_path, model, optimizer, scheduler, scaler, epoch, metrics["f1"], cfg)
+            save_checkpoint(
+                last_path,
+                model,
+                optimizer,
+                scheduler,
+                scaler,
+                epoch,
+                metrics["f1"],
+                cfg,
+            )
             if metrics["f1"] > best_f1:
                 best_f1 = metrics["f1"]
-                save_checkpoint(best_path, model, optimizer, scheduler, scaler, epoch, metrics["f1"], cfg)
+                save_checkpoint(
+                    best_path,
+                    model,
+                    optimizer,
+                    scheduler,
+                    scaler,
+                    epoch,
+                    metrics["f1"],
+                    cfg,
+                )
                 print(f"  ✅ saved {best_path} (best F1={best_f1:.4f})")
             print(f"  💾 saved {last_path} (last)")
 
             # --- Append to history (after every epoch — not just at end) ---
-            append_history(history_path, {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "val_f1": metrics["f1"],
-                "val_precision": metrics["precision"],
-                "val_recall": metrics["recall"],
-                "epoch_time_sec": round(epoch_time, 1),
-            })
+            append_history(
+                history_path,
+                {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    "val_f1": metrics["f1"],
+                    "val_precision": metrics["precision"],
+                    "val_recall": metrics["recall"],
+                    "epoch_time_sec": round(epoch_time, 1),
+                },
+            )
 
-        print(f"\n=== TRAINING COMPLETE ===")
+        print("\n=== TRAINING COMPLETE ===")
         print(f"Best val F1: {best_f1:.4f}")
         print(f"Checkpoints in: {OUT_DIR}")
 

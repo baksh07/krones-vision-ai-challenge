@@ -16,10 +16,17 @@ The script writes:
     - seg/submission.csv         (4,418 rows: image_id, target)
     - seg/submission_probs.csv   (per-channel max probabilities — for debugging)
 """
+
 from __future__ import annotations
 
+
 def main() -> None:
-    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Generate a test submission with the ROI-based model."
+    )
+    parser.parse_args()
 
     from dataclasses import dataclass
     from pathlib import Path
@@ -33,6 +40,8 @@ def main() -> None:
     from torch.utils.data import DataLoader, Dataset
     from tqdm import tqdm
 
+    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
+
     # ============================================================================
     # Paths — adjust if your layout differs
     # ============================================================================
@@ -44,15 +53,20 @@ def main() -> None:
     TEST_IMG_DIR = DATA_DIR / "test_images"
     SAMPLE_SUB = DATA_DIR / "sample_submission.csv"
 
-    assert CKPT_PATH.exists(), f"Missing checkpoint: {CKPT_PATH}"
-    assert TEST_IMG_DIR.exists(), f"Missing test_images: {TEST_IMG_DIR}"
-    assert SAMPLE_SUB.exists(), f"Missing sample_submission.csv: {SAMPLE_SUB}"
+    from krones_vision_ai.paths import require_paths
+
+    require_paths(
+        {
+            "checkpoint": CKPT_PATH,
+            "test images": TEST_IMG_DIR,
+            "sample submission": SAMPLE_SUB,
+        }
+    )
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {DEVICE}")
     if DEVICE.type == "cuda":
         print(f"GPU   : {torch.cuda.get_device_name(0)}")
-
 
     # ============================================================================
     # Channel definitions — must match what the model was trained on
@@ -63,7 +77,6 @@ def main() -> None:
         CHANNEL_THRESHOLDS,
         N_CHANNELS,
     )
-
 
     # ============================================================================
     # Load checkpoint and reconstruct config
@@ -77,7 +90,6 @@ def main() -> None:
     print(f"  img_size           : {saved_cfg['img_size']}")
     print(f"  encoder            : {saved_cfg['encoder_name']}")
     print(f"  arch               : {saved_cfg['arch']}")
-
 
     @dataclass
     class InferCfg:
@@ -95,24 +107,20 @@ def main() -> None:
         def area_scale(self) -> float:
             return (self.orig_h * self.orig_w) / (self.img_size * self.img_size)
 
-
     CFG = InferCfg()
     CFG.batch_size = 16  # safe inference batch — was hitting OOM at 32
     print(f"  area_scale (derived): {CFG.area_scale:.4f}")
     print(f"  batch_size (overridden for inference): {CFG.batch_size}")
-
 
     # ============================================================================
     # Build model and load weights
     # ============================================================================
     from krones_vision_ai.models import build_model
 
-
     model = build_model(CFG, n_classes=N_CHANNELS, pretrained=False).to(DEVICE)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print("  Model loaded ✓\n")
-
 
     # ============================================================================
     # Test dataset — no ROI crop, no augmentation
@@ -120,15 +128,20 @@ def main() -> None:
     MEAN = (0.485, 0.456, 0.406)
     STD = (0.229, 0.224, 0.225)
 
-
     def build_test_aug(size: int) -> A.Compose:
-        return A.Compose([
-            A.LongestMaxSize(max_size=size),
-            A.PadIfNeeded(min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT, value=0),
-            A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2(),
-        ])
-
+        return A.Compose(
+            [
+                A.LongestMaxSize(max_size=size),
+                A.PadIfNeeded(
+                    min_height=size,
+                    min_width=size,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                ),
+                A.Normalize(mean=MEAN, std=STD),
+                ToTensorV2(),
+            ]
+        )
 
     # ============================================================================
     # Auto-detect bottle ROI in a test image (v2 — Hough circles with fallbacks)
@@ -190,7 +203,7 @@ def main() -> None:
             center_tol = int(min(W, H) * center_search_frac / 2)
             best_circle = None
             best_score = -1.0
-            for (cx, cy, r) in circles:
+            for cx, cy, r in circles:
                 if abs(cx - cx_img) > center_tol or abs(cy - cy_img) > center_tol:
                     continue
                 mask = np.zeros_like(gray)
@@ -228,7 +241,6 @@ def main() -> None:
         # Step 4: ultimate fallback — median train ROI
         return (368, 251, 512, 512), "fallback"
 
-
     class TestDataset(Dataset):
         """Test-time dataset that auto-detects and crops to the bottle ROI.
 
@@ -238,7 +250,14 @@ def main() -> None:
         black (no bottle) get flagged so we can skip model inference and return
         verdict=0 directly.
         """
-        def __init__(self, df: pd.DataFrame, img_dir: Path, transform: A.Compose, target_size: int):
+
+        def __init__(
+            self,
+            df: pd.DataFrame,
+            img_dir: Path,
+            transform: A.Compose,
+            target_size: int,
+        ):
             self.df = df.reset_index(drop=True)
             self.img_dir = img_dir
             self.transform = transform
@@ -258,7 +277,7 @@ def main() -> None:
 
             # Detect bottle, crop to its bounding box (with padding) — matches training
             roi, status = detect_bottle_roi(img)
-            is_blank = (status == "blank")
+            is_blank = status == "blank"
 
             if is_blank:
                 # Use a black frame; we'll skip inference for this image anyway
@@ -278,13 +297,17 @@ def main() -> None:
             out = self.transform(image=img)
             return {"image": out["image"], "image_id": fname, "blank": is_blank}
 
-
     sample_sub = pd.read_csv(SAMPLE_SUB)
     print(f"Sample submission has {len(sample_sub):,} rows")
     print(f"Columns: {sample_sub.columns.tolist()}")
     print(f"First 3 image_ids: {sample_sub['image_id'].head(3).tolist()}\n")
 
-    test_ds = TestDataset(sample_sub[["image_id"]], TEST_IMG_DIR, build_test_aug(CFG.img_size), CFG.img_size)
+    test_ds = TestDataset(
+        sample_sub[["image_id"]],
+        TEST_IMG_DIR,
+        build_test_aug(CFG.img_size),
+        CFG.img_size,
+    )
     test_loader = DataLoader(
         test_ds,
         batch_size=CFG.batch_size,
@@ -293,50 +316,7 @@ def main() -> None:
         pin_memory=True,
     )
 
-
-    # ============================================================================
-    # Decision function
-    # ============================================================================
-    @torch.no_grad()
-    def predict_binary(
-        logits: torch.Tensor,
-        channel_thresholds: list,
-        prob_threshold: float = 0.5,
-        scale_to_full: float = 1.0,
-        aggregated_channels: set | None = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        if aggregated_channels is None:
-            aggregated_channels = set()
-        probs = torch.sigmoid(logits).detach().cpu().numpy()
-        bin_masks = (probs > prob_threshold).astype(np.uint8)
-        B, C, H, W = bin_masks.shape
-        out = np.zeros(B, dtype=np.uint8)
-        max_probs = probs.reshape(B, C, -1).max(axis=2)
-
-        for b in range(B):
-            verdict = 0
-            for c in range(C):
-                thr = channel_thresholds[c]
-                if thr is None:
-                    continue
-                mask = bin_masks[b, c]
-                if not mask.any():
-                    continue
-                n_lbl, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-                if n_lbl <= 1:
-                    continue
-                blob_areas = stats[1:, cv2.CC_STAT_AREA]
-                if c in aggregated_channels:
-                    area_used = int(blob_areas.sum())
-                else:
-                    area_used = int(blob_areas.max())
-                scaled = area_used * scale_to_full
-                if scaled > thr:
-                    verdict = 1
-                    break
-            out[b] = verdict
-        return out, max_probs
-
+    from krones_vision_ai.decisions import predict_from_logits
 
     # ============================================================================
     # Run inference
@@ -357,35 +337,34 @@ def main() -> None:
     # Critical: torch.no_grad() wraps the whole forward pass.
     # Without it, PyTorch builds the autograd graph for every batch and VRAM grows
     # until OOM. With it, no graph is built — memory stays bounded.
-    with torch.no_grad():
-        with torch.amp.autocast("cuda", enabled=True):
-            for batch in tqdm(test_loader, desc="inference", total=len(test_loader)):
-                img = batch["image"].to(DEVICE, non_blocking=True)
-                ids = batch["image_id"]
-                blank_flags = batch["blank"]
-                logits = model(img)
-                verdicts, max_probs = predict_binary(
-                    logits,
-                    CHANNEL_THRESHOLDS,
-                    prob_threshold=0.5,
-                    scale_to_full=CFG.area_scale,
-                    aggregated_channels=agg,
-                )
-                # Override verdict to 0 for blank images (no bottle present)
-                for i, b in enumerate(blank_flags):
-                    if bool(b):
-                        verdicts[i] = 0
-                        n_blank += 1
-                all_ids.extend(ids)
-                all_preds.extend(verdicts.tolist())
-                all_probs.append(max_probs)
-                del logits, img
+    with torch.no_grad(), torch.amp.autocast("cuda", enabled=True):
+        for batch in tqdm(test_loader, desc="inference", total=len(test_loader)):
+            img = batch["image"].to(DEVICE, non_blocking=True)
+            ids = batch["image_id"]
+            blank_flags = batch["blank"]
+            logits = model(img)
+            prediction_batch = predict_from_logits(
+                logits,
+                CHANNEL_THRESHOLDS,
+                area_scale=CFG.area_scale,
+                aggregated_channels=agg,
+            )
+            verdicts = prediction_batch.predictions
+            max_probs = prediction_batch.max_probabilities
+            # Override verdict to 0 for blank images (no bottle present)
+            for i, b in enumerate(blank_flags):
+                if bool(b):
+                    verdicts[i] = 0
+                    n_blank += 1
+            all_ids.extend(ids)
+            all_preds.extend(verdicts.tolist())
+            all_probs.append(max_probs)
+            del logits, img
 
     torch.cuda.empty_cache()
     print(f"\n{n_blank} blank/black image(s) detected — set to verdict=0 directly")
 
     print(f"\n✓ Inference complete on {len(all_ids):,} images")
-
 
     # ============================================================================
     # Build submission DataFrame and verify
@@ -404,15 +383,17 @@ def main() -> None:
 
     n_pos = int(sub["target"].sum())
     n_neg = len(sub) - n_pos
-    print(f"\nPrediction distribution:")
-    print(f"  Reusable (0)    : {n_neg:>5,}  ({100*n_neg/len(sub):.1f}%)")
-    print(f"  Not Reusable (1): {n_pos:>5,}  ({100*n_pos/len(sub):.1f}%)")
+    print("\nPrediction distribution:")
+    print(f"  Reusable (0)    : {n_neg:>5,}  ({100 * n_neg / len(sub):.1f}%)")
+    print(f"  Not Reusable (1): {n_pos:>5,}  ({100 * n_pos / len(sub):.1f}%)")
     print(f"  Total           : {len(sub):>5,}")
 
     ratio = n_pos / len(sub)
     if ratio < 0.30 or ratio > 0.85:
         print(f"\n⚠️  WARNING: ratio {ratio:.1%} differs sharply from train (58.3%).")
-        print("   Worth investigating — either test distribution differs or calibration issue.")
+        print(
+            "   Worth investigating — either test distribution differs or calibration issue."
+        )
 
     # ============================================================================
     # Save outputs

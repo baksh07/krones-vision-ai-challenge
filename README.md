@@ -27,6 +27,7 @@ analysis scripts and notebooks are included.
 | `01_eda_and_split (1).ipynb` | Exploratory analysis and preparation of training metadata and validation splits |
 | `02_segmentation_training_server.ipynb` | Segmentation training notebook |
 | `src/krones_vision_ai/commands/` | Training, inference, and diagnostic command implementations |
+| `src/krones_vision_ai/decisions.py` | Shared threshold-based prediction logic and trigger reporting |
 | `src/krones_vision_ai/rules.py` | Shared defect channels and decision thresholds |
 | `src/krones_vision_ai/models.py` | Shared segmentation-model construction |
 | `src/krones_vision_ai/paths.py` | Configurable challenge-data and artifact locations |

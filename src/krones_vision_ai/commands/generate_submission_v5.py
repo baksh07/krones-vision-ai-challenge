@@ -13,13 +13,19 @@ Usage:
     source venv/bin/activate
     python -m krones_vision_ai infer
 """
+
 from __future__ import annotations
 
+
 def main() -> None:
-    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Generate a test submission with the full-image model."
+    )
+    parser.parse_args()
 
     from dataclasses import dataclass
-    from pathlib import Path
 
     import albumentations as A
     import cv2
@@ -29,6 +35,8 @@ def main() -> None:
     from albumentations.pytorch import ToTensorV2
     from torch.utils.data import DataLoader, Dataset
     from tqdm import tqdm
+
+    from krones_vision_ai.paths import ARTIFACT_ROOT, DATA_ROOT
 
     # ============================================================================
     # Paths
@@ -41,15 +49,20 @@ def main() -> None:
     TEST_IMG_DIR = DATA_DIR / "test_images"
     SAMPLE_SUB = DATA_DIR / "sample_submission.csv"
 
-    assert CKPT_PATH.exists(), f"Missing checkpoint: {CKPT_PATH}"
-    assert TEST_IMG_DIR.exists(), f"Missing test_images: {TEST_IMG_DIR}"
-    assert SAMPLE_SUB.exists(), f"Missing sample_submission.csv: {SAMPLE_SUB}"
+    from krones_vision_ai.paths import require_paths
+
+    require_paths(
+        {
+            "checkpoint": CKPT_PATH,
+            "test images": TEST_IMG_DIR,
+            "sample submission": SAMPLE_SUB,
+        }
+    )
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {DEVICE}")
     if DEVICE.type == "cuda":
         print(f"GPU   : {torch.cuda.get_device_name(0)}")
-
 
     # ============================================================================
     # Channel definitions (must match training)
@@ -60,7 +73,6 @@ def main() -> None:
         CHANNEL_THRESHOLDS,
         N_CHANNELS,
     )
-
 
     # ============================================================================
     # Load checkpoint
@@ -74,8 +86,9 @@ def main() -> None:
     print(f"  img_size           : {saved_cfg['img_size']}")
     print(f"  encoder            : {saved_cfg['encoder_name']}")
     print(f"  arch               : {saved_cfg['arch']}")
-    print(f"  use_roi_crop       : {saved_cfg.get('use_roi_crop', '?')} (should be False)")
-
+    print(
+        f"  use_roi_crop       : {saved_cfg.get('use_roi_crop', '?')} (should be False)"
+    )
 
     @dataclass
     class InferCfg:
@@ -85,7 +98,7 @@ def main() -> None:
         arch: str = saved_cfg["arch"]
         orig_h: int = saved_cfg.get("orig_h", 1024)
         orig_w: int = saved_cfg.get("orig_w", 1280)
-        batch_size: int = 8   # conservative for 768²
+        batch_size: int = 8  # conservative for 768²
         num_workers: int = 4
         aggregate_scuffing: bool = bool(ckpt.get("aggregate_scuffing", False))
 
@@ -93,23 +106,19 @@ def main() -> None:
         def area_scale(self) -> float:
             return (self.orig_h * self.orig_w) / (self.img_size * self.img_size)
 
-
     CFG = InferCfg()
     print(f"  area_scale (derived): {CFG.area_scale:.4f}")
     print(f"  inference batch    : {CFG.batch_size}")
-
 
     # ============================================================================
     # Build model and load weights
     # ============================================================================
     from krones_vision_ai.models import build_model
 
-
     model = build_model(CFG, n_classes=N_CHANNELS, pretrained=False).to(DEVICE)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print("  Model loaded ✓\n")
-
 
     # ============================================================================
     # Test dataset — JUST RESIZE, no ROI logic
@@ -117,19 +126,25 @@ def main() -> None:
     MEAN = (0.485, 0.456, 0.406)
     STD = (0.229, 0.224, 0.225)
 
-
     def build_test_aug(size: int) -> A.Compose:
-        return A.Compose([
-            A.LongestMaxSize(max_size=size),
-            A.PadIfNeeded(min_height=size, min_width=size, border_mode=cv2.BORDER_CONSTANT, value=0),
-            A.Normalize(mean=MEAN, std=STD),
-            ToTensorV2(),
-        ])
-
+        return A.Compose(
+            [
+                A.LongestMaxSize(max_size=size),
+                A.PadIfNeeded(
+                    min_height=size,
+                    min_width=size,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                ),
+                A.Normalize(mean=MEAN, std=STD),
+                ToTensorV2(),
+            ]
+        )
 
     class TestDataset(Dataset):
         """Trivial: just read image, resize, normalize, return.
         Same preprocessing as training, by design."""
+
         def __init__(self, df, img_dir, transform):
             self.df = df.reset_index(drop=True)
             self.img_dir = img_dir
@@ -148,11 +163,12 @@ def main() -> None:
             out = self.transform(image=img)
             return {"image": out["image"], "image_id": fname}
 
-
     sample_sub = pd.read_csv(SAMPLE_SUB)
     print(f"Sample submission has {len(sample_sub):,} rows\n")
 
-    test_ds = TestDataset(sample_sub[["image_id"]], TEST_IMG_DIR, build_test_aug(CFG.img_size))
+    test_ds = TestDataset(
+        sample_sub[["image_id"]], TEST_IMG_DIR, build_test_aug(CFG.img_size)
+    )
     test_loader = DataLoader(
         test_ds,
         batch_size=CFG.batch_size,
@@ -161,44 +177,10 @@ def main() -> None:
         pin_memory=True,
     )
 
-
     # ============================================================================
     # Decision function
     # ============================================================================
-    @torch.no_grad()
-    def predict_binary(logits, channel_thresholds, prob_threshold=0.5,
-                        scale_to_full=1.0, aggregated_channels=None):
-        if aggregated_channels is None:
-            aggregated_channels = set()
-        probs = torch.sigmoid(logits).detach().cpu().numpy()
-        bin_masks = (probs > prob_threshold).astype(np.uint8)
-        B, C, H, W = bin_masks.shape
-        out = np.zeros(B, dtype=np.uint8)
-        max_probs = probs.reshape(B, C, -1).max(axis=2)
-        for b in range(B):
-            verdict = 0
-            for c in range(C):
-                thr = channel_thresholds[c]
-                if thr is None:
-                    continue
-                mask = bin_masks[b, c]
-                if not mask.any():
-                    continue
-                n_lbl, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-                if n_lbl <= 1:
-                    continue
-                blob_areas = stats[1:, cv2.CC_STAT_AREA]
-                if c in aggregated_channels:
-                    area_used = int(blob_areas.sum())
-                else:
-                    area_used = int(blob_areas.max())
-                scaled = area_used * scale_to_full
-                if scaled > thr:
-                    verdict = 1
-                    break
-            out[b] = verdict
-        return out, max_probs
-
+    from krones_vision_ai.decisions import predict_from_logits
 
     # ============================================================================
     # Run inference (with torch.no_grad to prevent OOM — same as v4 fix)
@@ -213,24 +195,27 @@ def main() -> None:
     agg = AGGREGATED_CHANNEL_INDICES if CFG.aggregate_scuffing else set()
     all_ids, all_preds, all_probs = [], [], []
 
-    with torch.no_grad():
-        with torch.amp.autocast("cuda", enabled=True):
-            for batch in tqdm(test_loader, desc="inference", total=len(test_loader)):
-                img = batch["image"].to(DEVICE, non_blocking=True)
-                ids = batch["image_id"]
-                logits = model(img)
-                verdicts, max_probs = predict_binary(
-                    logits, CHANNEL_THRESHOLDS, prob_threshold=0.5,
-                    scale_to_full=CFG.area_scale, aggregated_channels=agg,
-                )
-                all_ids.extend(ids)
-                all_preds.extend(verdicts.tolist())
-                all_probs.append(max_probs)
-                del logits, img
+    with torch.no_grad(), torch.amp.autocast("cuda", enabled=True):
+        for batch in tqdm(test_loader, desc="inference", total=len(test_loader)):
+            img = batch["image"].to(DEVICE, non_blocking=True)
+            ids = batch["image_id"]
+            logits = model(img)
+            prediction_batch = predict_from_logits(
+                logits,
+                CHANNEL_THRESHOLDS,
+                prob_threshold=0.5,
+                area_scale=CFG.area_scale,
+                aggregated_channels=agg,
+            )
+            verdicts = prediction_batch.predictions
+            max_probs = prediction_batch.max_probabilities
+            all_ids.extend(ids)
+            all_preds.extend(verdicts.tolist())
+            all_probs.append(max_probs)
+            del logits, img
 
     torch.cuda.empty_cache()
     print(f"\n✓ Inference complete on {len(all_ids):,} images")
-
 
     # ============================================================================
     # Build and save submission
@@ -243,9 +228,9 @@ def main() -> None:
 
     n_pos = int(sub["target"].sum())
     n_neg = len(sub) - n_pos
-    print(f"\nPrediction distribution:")
-    print(f"  Reusable (0)    : {n_neg:>5,}  ({100*n_neg/len(sub):.1f}%)")
-    print(f"  Not Reusable (1): {n_pos:>5,}  ({100*n_pos/len(sub):.1f}%)")
+    print("\nPrediction distribution:")
+    print(f"  Reusable (0)    : {n_neg:>5,}  ({100 * n_neg / len(sub):.1f}%)")
+    print(f"  Not Reusable (1): {n_pos:>5,}  ({100 * n_pos / len(sub):.1f}%)")
     print(f"  Total           : {len(sub):>5,}")
 
     ratio = n_pos / len(sub)
